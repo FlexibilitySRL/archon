@@ -180,10 +180,8 @@ export function Sidebar(): React.ReactElement {
       {/* Logo */}
       <div className="flex flex-col gap-3 p-4">
         <Link to="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <span className="text-sm font-semibold text-primary-foreground">A</span>
-          </div>
-          <span className="text-base font-semibold text-text-primary">Archon</span>
+          <img src="/favicon-flex.png" alt="Flexibility" className="h-8 w-8 rounded-lg" />
+          <img src="/logo-flex.svg" alt="Flexibility" className="h-5" />
         </Link>
       </div>
 

@@ -31,10 +31,8 @@ export function TopNav(): React.ReactElement {
     <nav className="flex items-center gap-1 border-b border-border bg-surface px-4">
       {/* Brand logo */}
       <Link to="/chat" className="flex items-center gap-2 mr-4 hover:opacity-80 transition-opacity">
-        <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary">
-          <span className="text-sm font-semibold text-primary-foreground">A</span>
-        </div>
-        <span className="text-sm font-semibold text-text-primary">Archon</span>
+        <img src="/favicon-flex.png" alt="Flexibility" className="h-7 w-7 rounded-md" />
+        <img src="/logo-flex.svg" alt="Flexibility" className="h-4" />
       </Link>
 
       {tabs.map(({ to, end, icon: Icon, label }) => (
