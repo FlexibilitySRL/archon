@@ -430,6 +430,7 @@ function WorkflowBuilderInner(): React.ReactElement {
         }}
         onProviderChange={(p): void => {
           setProvider(p);
+          setModel(undefined);
           markDirty();
         }}
         onModelChange={(m): void => {

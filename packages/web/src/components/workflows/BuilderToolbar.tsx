@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { listWorkflows } from '@/lib/api';
+import { listWorkflows, getCopilotModels } from '@/lib/api';
 import { useProject } from '@/contexts/ProjectContext';
 
 export type ViewMode = 'hidden' | 'split' | 'full';
@@ -63,6 +63,15 @@ export function BuilderToolbar({
     queryKey: ['workflows', cwd],
     queryFn: () => listWorkflows(cwd),
   });
+
+  const { data: copilotModels } = useQuery({
+    queryKey: ['copilot-models'],
+    queryFn: getCopilotModels,
+    enabled: provider === 'copilot',
+    staleTime: 60_000,
+  });
+
+  const CLAUDE_MODELS = ['sonnet', 'opus', 'haiku'] as const;
 
   return (
     <>
@@ -170,15 +179,47 @@ export function BuilderToolbar({
             <option value="copilot">Copilot</option>
           </select>
 
-          <input
-            type="text"
-            value={model ?? ''}
-            onChange={(e): void => {
-              onModelChange(e.target.value || undefined);
-            }}
-            placeholder="Model"
-            className="w-20 rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
-          />
+          {provider === 'claude' ? (
+            <select
+              value={model ?? ''}
+              onChange={(e): void => {
+                onModelChange(e.target.value || undefined);
+              }}
+              className="rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="">Model</option>
+              {CLAUDE_MODELS.map(m => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          ) : provider === 'copilot' ? (
+            <select
+              value={model ?? ''}
+              onChange={(e): void => {
+                onModelChange(e.target.value || undefined);
+              }}
+              className="rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+            >
+              <option value="">Model</option>
+              {(copilotModels ?? []).map(m => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              type="text"
+              value={model ?? ''}
+              onChange={(e): void => {
+                onModelChange(e.target.value || undefined);
+              }}
+              placeholder="Model"
+              className="w-20 rounded-md border border-border bg-surface px-1.5 py-1 text-xs text-text-primary placeholder:text-text-tertiary focus:outline-none focus:ring-1 focus:ring-accent"
+            />
+          )}
         </div>
 
         {/* Right group: View toggle + Actions */}
