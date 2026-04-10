@@ -13,6 +13,7 @@ import {
   updateCodebase,
   deleteCodebase,
   updateAssistantConfig,
+  getCopilotModels,
   getCodebaseEnvVars,
   setCodebaseEnvVar,
   deleteCodebaseEnvVar,
@@ -457,6 +458,12 @@ function ProjectsSection(): React.ReactElement {
 
 function AssistantConfigSection({ config }: { config: SafeConfigResponse }): React.ReactElement {
   const queryClient = useQueryClient();
+  const copilotModelsQuery = useQuery({
+    queryKey: ['copilot-models'],
+    queryFn: getCopilotModels,
+    staleTime: 60_000,
+    retry: 1,
+  });
   const [assistant, setAssistant] = useState(config.assistant);
   const [claudeModel, setClaudeModel] = useState(config.assistants.claude.model ?? 'sonnet');
   const [codexModel, setCodexModel] = useState(config.assistants.codex.model ?? '');
@@ -598,14 +605,34 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
             </select>
 
             <label htmlFor="copilot-model">Copilot Model</label>
-            <Input
-              id="copilot-model"
-              value={copilotModel}
-              onChange={e => {
-                setCopilotModel(e.target.value);
-              }}
-              placeholder="gpt-4o, o3, claude-sonnet-4-5..."
-            />
+            {copilotModelsQuery.isLoading ? (
+              <span className="text-text-secondary text-sm">Loading models…</span>
+            ) : copilotModelsQuery.data && copilotModelsQuery.data.length > 0 ? (
+              <select
+                id="copilot-model"
+                value={copilotModel}
+                onChange={e => {
+                  setCopilotModel(e.target.value);
+                }}
+                className={selectClass}
+              >
+                <option value="">Select a model</option>
+                {copilotModelsQuery.data.map(m => (
+                  <option key={m.id} value={m.id}>
+                    {m.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <Input
+                id="copilot-model"
+                value={copilotModel}
+                onChange={e => {
+                  setCopilotModel(e.target.value);
+                }}
+                placeholder="gpt-4o, o3, claude-sonnet-4-5..."
+              />
+            )}
 
             <label htmlFor="copilot-reasoning">Copilot Reasoning</label>
             <select

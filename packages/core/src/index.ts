@@ -57,6 +57,7 @@ export { SessionNotFoundError } from './db/sessions';
 // =============================================================================
 export { ClaudeClient } from './clients/claude';
 export { CodexClient } from './clients/codex';
+export { CopilotClient } from './clients/copilot';
 export { getAssistantClient } from './clients/factory';
 
 // =============================================================================

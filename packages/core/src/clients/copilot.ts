@@ -73,6 +73,46 @@ function createQueue<T>(): {
   };
 }
 
+function isReasoningUnsupportedError(err: unknown): boolean {
+  return err instanceof Error && err.message.includes('does not support reasoning effort');
+}
+
+function buildSessionConfig(
+  cwd: string,
+  requestOptions?: AssistantRequestOptions,
+  includeReasoning = true
+): SessionConfig {
+  return {
+    onPermissionRequest: approveAll,
+    workingDirectory: cwd,
+    ...(requestOptions?.model ? { model: requestOptions.model } : {}),
+    ...(includeReasoning && requestOptions?.modelReasoningEffort
+      ? { reasoningEffort: mapReasoningEffort(requestOptions.modelReasoningEffort) }
+      : {}),
+  };
+}
+
+async function createSessionWithFallback(
+  client: CopilotSdk,
+  cwd: string,
+  requestOptions: AssistantRequestOptions | undefined,
+  queue: ReturnType<typeof createQueue<MessageChunk>>
+): Promise<Awaited<ReturnType<typeof client.createSession>>> {
+  try {
+    return await client.createSession(buildSessionConfig(cwd, requestOptions));
+  } catch (err) {
+    if (isReasoningUnsupportedError(err)) {
+      getLog().warn({ model: requestOptions?.model }, 'session.reasoning_unsupported_fallback');
+      queue.push({
+        type: 'system',
+        content: '⚠️ Model does not support reasoning effort — retrying without it.',
+      });
+      return await client.createSession(buildSessionConfig(cwd, requestOptions, false));
+    }
+    throw err;
+  }
+}
+
 /**
  * GitHub Copilot assistant client.
  * Implements IAssistantClient for use alongside ClaudeClient and CodexClient.
@@ -127,42 +167,15 @@ export class CopilotClient implements IAssistantClient {
       if (resumeSessionId) {
         getLog().debug({ sessionId: resumeSessionId }, 'resuming_session');
         try {
-          const resumeConfig: ResumeSessionConfig = {
-            onPermissionRequest: approveAll,
-            workingDirectory: cwd,
-            ...(requestOptions?.model ? { model: requestOptions.model } : {}),
-            ...(requestOptions?.modelReasoningEffort
-              ? { reasoningEffort: mapReasoningEffort(requestOptions.modelReasoningEffort) }
-              : {}),
-          };
+          const resumeConfig: ResumeSessionConfig = buildSessionConfig(cwd, requestOptions);
           session = await client.resumeSession(resumeSessionId, resumeConfig);
         } catch (resumeErr) {
           getLog().error({ err: resumeErr, sessionId: resumeSessionId }, 'resume_session_failed');
-          const config: SessionConfig = {
-            onPermissionRequest: approveAll,
-            workingDirectory: cwd,
-            ...(requestOptions?.model ? { model: requestOptions.model } : {}),
-            ...(requestOptions?.modelReasoningEffort
-              ? { reasoningEffort: mapReasoningEffort(requestOptions.modelReasoningEffort) }
-              : {}),
-          };
-          session = await client.createSession(config);
-          queue.push({
-            type: 'system',
-            content: '⚠️ Could not resume previous session. Starting fresh.',
-          });
+          session = await createSessionWithFallback(client, cwd, requestOptions, queue);
         }
       } else {
         getLog().debug({ cwd }, 'creating_session');
-        const config: SessionConfig = {
-          onPermissionRequest: approveAll,
-          workingDirectory: cwd,
-          ...(requestOptions?.model ? { model: requestOptions.model } : {}),
-          ...(requestOptions?.modelReasoningEffort
-            ? { reasoningEffort: mapReasoningEffort(requestOptions.modelReasoningEffort) }
-            : {}),
-        };
-        session = await client.createSession(config);
+        session = await createSessionWithFallback(client, cwd, requestOptions, queue);
       }
 
       // --- subscribe to events ---
@@ -274,6 +287,36 @@ export class CopilotClient implements IAssistantClient {
       }
     } finally {
       for (const unsub of unsubscribers) unsub();
+      try {
+        await client.stop();
+      } catch (stopErr) {
+        getLog().warn({ err: stopErr }, 'client.stop_failed');
+      }
+    }
+  }
+
+  /**
+   * List available models from the Copilot SDK.
+   * Spins up a temporary client, fetches models, then shuts down.
+   */
+  async listModels(): Promise<{ id: string; name: string }[]> {
+    const isPat = (t: string | undefined): boolean => !!t?.startsWith('ghp_');
+    const env: Record<string, string | undefined> = { ...process.env };
+    if (isPat(env.GH_TOKEN)) env.GH_TOKEN = undefined;
+    if (isPat(env.GITHUB_TOKEN)) env.GITHUB_TOKEN = undefined;
+
+    const copilotToken = process.env.COPILOT_GITHUB_TOKEN;
+    const client = new CopilotSdk({
+      logLevel: 'error',
+      env,
+      ...(copilotToken ? { githubToken: copilotToken } : {}),
+    });
+
+    try {
+      await client.start();
+      const models = await client.listModels();
+      return models.map(m => ({ id: m.id, name: m.name }));
+    } finally {
       try {
         await client.stop();
       } catch (stopErr) {

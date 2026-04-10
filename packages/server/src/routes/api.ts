@@ -796,6 +796,28 @@ const patchAssistantConfigRoute = createRoute({
   },
 });
 
+const getCopilotModelsRoute = createRoute({
+  method: 'get',
+  path: '/api/copilot/models',
+  tags: ['System'],
+  summary: 'List available Copilot models',
+  responses: {
+    200: {
+      content: {
+        'application/json': {
+          schema: z
+            .object({
+              models: z.array(z.object({ id: z.string(), name: z.string() })),
+            })
+            .openapi('CopilotModelsResponse'),
+        },
+      },
+      description: 'Available Copilot models',
+    },
+    500: jsonError('Server error'),
+  },
+});
+
 const getCodebaseEnvironmentsRoute = createRoute({
   method: 'get',
   path: '/api/codebases/{id}/environments',
@@ -2583,6 +2605,19 @@ export function registerApiRoutes(
     } catch (error) {
       getLog().error({ err: error }, 'config.assistants_update_failed');
       return apiError(c, 500, 'Failed to update assistant configuration');
+    }
+  });
+
+  // GET /api/copilot/models - List available Copilot models
+  registerOpenApiRoute(getCopilotModelsRoute, async c => {
+    try {
+      const copilotModule = await import('@archon/core/clients/copilot');
+      const client = new copilotModule.CopilotClient();
+      const models = await client.listModels();
+      return c.json({ models });
+    } catch (error) {
+      getLog().error({ err: error }, 'copilot.models_list_failed');
+      return apiError(c, 500, 'Failed to list Copilot models');
     }
   });
 

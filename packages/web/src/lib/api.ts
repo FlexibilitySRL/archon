@@ -453,6 +453,16 @@ export async function updateAssistantConfig(
   });
 }
 
+export interface CopilotModel {
+  id: string;
+  name: string;
+}
+
+export async function getCopilotModels(): Promise<CopilotModel[]> {
+  const result = await fetchJSON<{ models: CopilotModel[] }>('/api/copilot/models');
+  return result.models;
+}
+
 export type IsolationEnvironment = components['schemas']['IsolationEnvironment'];
 
 export async function getCodebaseEnvironments(codebaseId: string): Promise<IsolationEnvironment[]> {

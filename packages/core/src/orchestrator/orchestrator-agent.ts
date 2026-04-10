@@ -81,6 +81,42 @@ export interface OrchestratorCommands {
   projectRegistration: ProjectRegistration | null;
 }
 
+// ─── Config → Request Options ──────────────────────────────────────────────
+
+/**
+ * Build AssistantRequestOptions from the merged config for the given provider.
+ * Reads model, reasoning effort, web search, and provider-specific settings.
+ */
+function buildRequestOptions(assistantType: string, config: MergedConfig): AssistantRequestOptions {
+  switch (assistantType) {
+    case 'claude': {
+      const c = config.assistants.claude;
+      return {
+        ...(c.model ? { model: c.model } : {}),
+        ...(c.settingSources ? { settingSources: c.settingSources } : {}),
+      };
+    }
+    case 'codex': {
+      const c = config.assistants.codex;
+      return {
+        ...(c.model ? { model: c.model } : {}),
+        ...(c.modelReasoningEffort ? { modelReasoningEffort: c.modelReasoningEffort } : {}),
+        ...(c.webSearchMode ? { webSearchMode: c.webSearchMode } : {}),
+        ...(c.additionalDirectories ? { additionalDirectories: c.additionalDirectories } : {}),
+      };
+    }
+    case 'copilot': {
+      const c = config.assistants.copilot;
+      return {
+        ...(c.model ? { model: c.model } : {}),
+        ...(c.modelReasoningEffort ? { modelReasoningEffort: c.modelReasoningEffort } : {}),
+      };
+    }
+    default:
+      return {};
+  }
+}
+
 // ─── Command Parsing ────────────────────────────────────────────────────────
 
 /**
@@ -760,11 +796,10 @@ export async function handleMessage(
     // Reuse the config already loaded during workflow discovery (avoids a second disk read).
     // Fall back to loadConfig only when no codebase is scoped (discoveredConfig is undefined).
     const config = discoveredConfig ?? (await loadConfig());
-    const requestOptions: AssistantRequestOptions = {
-      ...(conversation.ai_assistant_type === 'claude' && config.assistants.claude.settingSources
-        ? { settingSources: config.assistants.claude.settingSources }
-        : {}),
-    };
+    const requestOptions: AssistantRequestOptions = buildRequestOptions(
+      conversation.ai_assistant_type,
+      config
+    );
 
     const mode = platform.getStreamingMode();
     if (mode === 'stream') {
