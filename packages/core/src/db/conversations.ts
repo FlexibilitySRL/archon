@@ -58,7 +58,8 @@ export async function getOrCreateConversation(
   platformType: string,
   platformId: string,
   codebaseId?: string,
-  parentConversationId?: string
+  parentConversationId?: string,
+  defaultAssistantType?: string
 ): Promise<Conversation> {
   const existing = await pool.query<Conversation>(
     'SELECT * FROM remote_agent_conversations WHERE platform_type = $1 AND platform_conversation_id = $2',
@@ -72,7 +73,7 @@ export async function getOrCreateConversation(
   // Check if we should inherit from a parent conversation (e.g., Discord thread inheriting from parent channel)
   let inheritedCodebaseId: string | null = null;
   let inheritedCwd: string | null = null;
-  let assistantType = process.env.DEFAULT_AI_ASSISTANT ?? 'claude';
+  let assistantType = process.env.DEFAULT_AI_ASSISTANT ?? defaultAssistantType ?? 'claude';
 
   if (parentConversationId) {
     const parent = await pool.query<Conversation>(
@@ -114,7 +115,9 @@ export async function getOrCreateConversation(
 
 export async function updateConversation(
   id: string,
-  updates: Partial<Pick<Conversation, 'codebase_id' | 'cwd' | 'isolation_env_id'>> & {
+  updates: Partial<
+    Pick<Conversation, 'codebase_id' | 'cwd' | 'isolation_env_id' | 'ai_assistant_type'>
+  > & {
     hidden?: boolean;
   }
 ): Promise<void> {
@@ -137,6 +140,10 @@ export async function updateConversation(
   if (updates.hidden !== undefined) {
     fields.push(`hidden = $${String(i++)}`);
     values.push(updates.hidden ? 1 : 0);
+  }
+  if (updates.ai_assistant_type !== undefined) {
+    fields.push(`ai_assistant_type = $${String(i++)}`);
+    values.push(updates.ai_assistant_type);
   }
 
   if (fields.length === 0) {

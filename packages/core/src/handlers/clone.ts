@@ -93,8 +93,9 @@ async function registerRepoAtPath(
     );
   }
 
-  // Auto-detect assistant type based on folder structure
-  let suggestedAssistant = 'claude';
+  // Auto-detect assistant type based on folder structure, fall back to config default
+  const cloneConfig = await loadConfig();
+  let suggestedAssistant = cloneConfig.assistant;
   const codexFolder = join(targetPath, '.codex');
   const claudeFolder = join(targetPath, '.claude');
 
@@ -108,7 +109,7 @@ async function registerRepoAtPath(
       suggestedAssistant = 'claude';
       getLog().debug({ path: claudeFolder }, 'assistant_detected_claude');
     } catch {
-      getLog().debug('assistant_default_claude');
+      getLog().debug({ assistant: suggestedAssistant }, 'assistant_using_config_default');
     }
   }
 

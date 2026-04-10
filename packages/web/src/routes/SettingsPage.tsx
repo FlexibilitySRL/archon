@@ -466,6 +466,10 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
   const [webSearch, setWebSearch] = useState<'disabled' | 'cached' | 'live'>(
     config.assistants.codex.webSearchMode ?? 'disabled'
   );
+  const [copilotModel, setCopilotModel] = useState(config.assistants.copilot.model ?? '');
+  const [copilotReasoning, setCopilotReasoning] = useState<'low' | 'medium' | 'high' | 'xhigh'>(
+    config.assistants.copilot.modelReasoningEffort ?? 'medium'
+  );
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const hasChanges =
@@ -473,7 +477,9 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
     claudeModel !== (config.assistants.claude.model ?? 'sonnet') ||
     codexModel !== (config.assistants.codex.model ?? '') ||
     reasoning !== (config.assistants.codex.modelReasoningEffort ?? 'medium') ||
-    webSearch !== (config.assistants.codex.webSearchMode ?? 'disabled');
+    webSearch !== (config.assistants.codex.webSearchMode ?? 'disabled') ||
+    copilotModel !== (config.assistants.copilot.model ?? '') ||
+    copilotReasoning !== (config.assistants.copilot.modelReasoningEffort ?? 'medium');
 
   useEffect(() => {
     setAssistant(config.assistant);
@@ -481,6 +487,8 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
     setCodexModel(config.assistants.codex.model ?? '');
     setReasoning(config.assistants.codex.modelReasoningEffort ?? 'medium');
     setWebSearch(config.assistants.codex.webSearchMode ?? 'disabled');
+    setCopilotModel(config.assistants.copilot.model ?? '');
+    setCopilotReasoning(config.assistants.copilot.modelReasoningEffort ?? 'medium');
   }, [config]);
 
   const mutation = useMutation({
@@ -501,12 +509,14 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
     mutation.mutate({
       assistant,
       claude: { model: claudeModel },
-      // The generated type requires `model` when `codex` is present; omit the codex key
-      // entirely when no model is set so the server treats it as "no codex changes".
+      // Omit provider key entirely when no model is set — server treats it as "no changes".
       ...(codexModel
         ? {
             codex: { model: codexModel, modelReasoningEffort: reasoning, webSearchMode: webSearch },
           }
+        : {}),
+      ...(copilotModel
+        ? { copilot: { model: copilotModel, modelReasoningEffort: copilotReasoning } }
         : {}),
     });
   }
@@ -524,12 +534,13 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
               id="default-assistant"
               value={assistant}
               onChange={e => {
-                setAssistant(e.target.value as 'claude' | 'codex');
+                setAssistant(e.target.value as 'claude' | 'codex' | 'copilot');
               }}
               className={selectClass}
             >
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
+              <option value="copilot">Copilot</option>
             </select>
 
             <label htmlFor="claude-model">Claude Model</label>
@@ -584,6 +595,31 @@ function AssistantConfigSection({ config }: { config: SafeConfigResponse }): Rea
               <option value="disabled">disabled</option>
               <option value="cached">cached</option>
               <option value="live">live</option>
+            </select>
+
+            <label htmlFor="copilot-model">Copilot Model</label>
+            <Input
+              id="copilot-model"
+              value={copilotModel}
+              onChange={e => {
+                setCopilotModel(e.target.value);
+              }}
+              placeholder="gpt-4o, o3, claude-sonnet-4-5..."
+            />
+
+            <label htmlFor="copilot-reasoning">Copilot Reasoning</label>
+            <select
+              id="copilot-reasoning"
+              value={copilotReasoning}
+              onChange={e => {
+                setCopilotReasoning(e.target.value as 'low' | 'medium' | 'high' | 'xhigh');
+              }}
+              className={selectClass}
+            >
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+              <option value="xhigh">xhigh</option>
             </select>
           </div>
 

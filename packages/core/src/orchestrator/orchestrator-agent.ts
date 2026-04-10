@@ -506,11 +506,13 @@ export async function handleMessage(
     getLog().debug({ conversationId }, 'orchestrator_message_received');
 
     // 1. Get/create conversation and inherit thread context
+    const initialConfig = await loadConfig();
     let conversation = await db.getOrCreateConversation(
       platform.getPlatformType(),
       conversationId,
       undefined,
-      parentConversationId
+      parentConversationId,
+      initialConfig.assistant
     );
     conversation = await inheritThreadContext(
       platform,
@@ -1189,11 +1191,12 @@ async function handleRegisterProject(
     return `Project "${projectName}" is already registered (path: ${alreadyExists.default_cwd}).`;
   }
 
-  // Create codebase record
+  // Create codebase record — use config default assistant
+  const regConfig = await loadConfig();
   const codebase = await codebaseDb.createCodebase({
     name: projectName,
     default_cwd: projectPath,
-    ai_assistant_type: 'claude',
+    ai_assistant_type: regConfig.assistant,
   });
 
   getLog().info(

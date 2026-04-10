@@ -8,9 +8,12 @@ export function isClaudeModel(model: string): boolean {
   );
 }
 
-export function isModelCompatible(provider: 'claude' | 'codex', model?: string): boolean {
+export function isModelCompatible(
+  provider: 'claude' | 'codex' | 'copilot',
+  model?: string
+): boolean {
   if (!model) return true;
   if (provider === 'claude') return isClaudeModel(model);
-  // Codex: accept most models, but reject obvious Claude aliases/prefixes
+  // Copilot and Codex: accept any model string, reject obvious Claude aliases
   return !isClaudeModel(model);
 }

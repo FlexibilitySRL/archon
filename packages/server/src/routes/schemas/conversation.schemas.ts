@@ -56,7 +56,10 @@ export const createConversationResponseSchema = z
 
 /** PATCH /api/conversations/:id request body. */
 export const updateConversationBodySchema = z
-  .object({ title: z.string().min(1).optional() })
+  .object({
+    title: z.string().min(1).optional(),
+    ai_assistant_type: z.enum(['claude', 'codex', 'copilot']).optional(),
+  })
   .openapi('UpdateConversationBody');
 
 /** Generic success response. */

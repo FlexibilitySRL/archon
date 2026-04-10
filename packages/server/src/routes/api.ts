@@ -1091,10 +1091,13 @@ export function registerApiRoutes(
 
       const conversationId = `web-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+      const config = await loadConfig();
       const conversation = await conversationDb.getOrCreateConversation(
         'web',
         conversationId,
-        codebaseId
+        codebaseId,
+        undefined,
+        config.assistant
       );
       webAdapter.setConversationDbId(conversation.platform_conversation_id, conversation.id);
 
@@ -1139,17 +1142,22 @@ export function registerApiRoutes(
     }
   });
 
-  // PATCH /api/conversations/:id - Update conversation (title)
+  // PATCH /api/conversations/:id - Update conversation (title, assistant)
   registerOpenApiRoute(updateConversationRoute, async c => {
     const platformId = c.req.param('id') ?? '';
-    const { title } = getValidatedBody(c, updateConversationBodySchema);
+    const body = getValidatedBody(c, updateConversationBodySchema);
     try {
       const conv = await conversationDb.findConversationByPlatformId(platformId);
       if (!conv) {
         return apiError(c, 404, 'Conversation not found');
       }
-      if (title !== undefined) {
-        await conversationDb.updateConversationTitle(conv.id, title.slice(0, 255));
+      if (body.title !== undefined) {
+        await conversationDb.updateConversationTitle(conv.id, body.title.slice(0, 255));
+      }
+      if (body.ai_assistant_type !== undefined) {
+        await conversationDb.updateConversation(conv.id, {
+          ai_assistant_type: body.ai_assistant_type,
+        });
       }
       return c.json({ success: true });
     } catch (error) {
@@ -1557,7 +1565,7 @@ export function registerApiRoutes(
     }
   });
 
-  // PATCH /api/codebases/:id - Update consent flags
+  // PATCH /api/codebases/:id - Update consent flags and assistant type
   registerOpenApiRoute(updateCodebaseRoute, async c => {
     const id = c.req.param('id') ?? '';
     const body = getValidatedBody(c, updateCodebaseBodySchema);
@@ -1565,6 +1573,18 @@ export function registerApiRoutes(
       const codebase = await codebaseDb.getCodebase(id);
       if (!codebase) {
         return apiError(c, 404, 'Codebase not found');
+      }
+
+      if (body.ai_assistant_type !== undefined) {
+        await codebaseDb.updateCodebase(id, { ai_assistant_type: body.ai_assistant_type });
+        getLog().info(
+          { codebaseId: id, from: codebase.ai_assistant_type, to: body.ai_assistant_type },
+          'codebase.assistant_type_changed'
+        );
+      }
+
+      if (body.allowEnvKeys === undefined) {
+        return c.json({ success: true });
       }
 
       // Capture scanner findings for the audit log (best-effort — path may be gone)
@@ -2545,10 +2565,11 @@ export function registerApiRoutes(
       if (body.assistant !== undefined) {
         updates.defaultAssistant = body.assistant;
       }
-      if (body.claude !== undefined || body.codex !== undefined) {
+      if (body.claude !== undefined || body.codex !== undefined || body.copilot !== undefined) {
         updates.assistants = {
           ...(body.claude ? { claude: body.claude } : {}),
           ...(body.codex ? { codex: body.codex } : {}),
+          ...(body.copilot ? { copilot: body.copilot } : {}),
         };
       }
 

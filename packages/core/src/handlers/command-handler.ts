@@ -925,6 +925,7 @@ Talk naturally — the orchestrator routes your requests to the right workflow a
 
 **Session**
 - \`/status\` — Show current session and project info
+- \`/assistant [claude|codex|copilot]\` — Show or switch AI assistant
 - \`/reset\` — Clear conversation and start fresh
 - \`/help\` — Show this help message
 
@@ -1139,6 +1140,45 @@ Commands are auto-discovered from .archon/commands/ — no registration needed.`
         getLog().error({ err, command: 'init' }, 'cmd.init_failed');
         return { success: false, message: `Failed to initialize: ${err.message}` };
       }
+    }
+
+    case 'assistant': {
+      const VALID_ASSISTANTS = ['claude', 'codex', 'copilot'] as const;
+      const requested = (args[0] ?? '').toLowerCase();
+
+      if (!requested) {
+        return {
+          success: true,
+          message: `Current assistant: **${conversation.ai_assistant_type}**\n\nUsage: \`/assistant <${VALID_ASSISTANTS.join('|')}>\``,
+        };
+      }
+
+      if (!VALID_ASSISTANTS.includes(requested as (typeof VALID_ASSISTANTS)[number])) {
+        return {
+          success: false,
+          message: `Invalid assistant: "${requested}"\n\nValid options: ${VALID_ASSISTANTS.join(', ')}`,
+        };
+      }
+
+      if (requested === conversation.ai_assistant_type) {
+        return {
+          success: true,
+          message: `Already using **${requested}**.`,
+        };
+      }
+
+      await db.updateConversation(conversation.id, { ai_assistant_type: requested });
+
+      // Also reset the session so the next message uses the new client
+      const session = await sessionDb.getActiveSession(conversation.id);
+      if (session) {
+        await safeDeactivateSession(session.id, 'reset');
+      }
+
+      return {
+        success: true,
+        message: `Switched to **${requested}**. Next message will use the new assistant.`,
+      };
     }
 
     default:

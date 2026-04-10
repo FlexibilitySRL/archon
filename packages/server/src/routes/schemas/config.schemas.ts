@@ -7,13 +7,17 @@ import { z } from '@hono/zod-openapi';
 export const safeConfigSchema = z
   .object({
     botName: z.string(),
-    assistant: z.enum(['claude', 'codex']),
+    assistant: z.enum(['claude', 'codex', 'copilot']),
     assistants: z.object({
       claude: z.object({ model: z.string().optional() }),
       codex: z.object({
         model: z.string().optional(),
         modelReasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
         webSearchMode: z.enum(['disabled', 'cached', 'live']).optional(),
+      }),
+      copilot: z.object({
+        model: z.string().optional(),
+        modelReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
       }),
     }),
     streaming: z.object({
@@ -34,7 +38,7 @@ export const safeConfigSchema = z
 /** Body for PATCH /api/config/assistants — all fields optional (partial update). */
 export const updateAssistantConfigBodySchema = z
   .object({
-    assistant: z.enum(['claude', 'codex']).optional(),
+    assistant: z.enum(['claude', 'codex', 'copilot']).optional(),
     claude: z
       .object({
         model: z.string(),
@@ -45,6 +49,12 @@ export const updateAssistantConfigBodySchema = z
         model: z.string(),
         modelReasoningEffort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
         webSearchMode: z.enum(['disabled', 'cached', 'live']).optional(),
+      })
+      .optional(),
+    copilot: z
+      .object({
+        model: z.string(),
+        modelReasoningEffort: z.enum(['low', 'medium', 'high', 'xhigh']).optional(),
       })
       .optional(),
   })

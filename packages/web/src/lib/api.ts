@@ -95,7 +95,7 @@ export async function createConversation(
 
 export async function updateConversation(
   id: string,
-  updates: { title?: string }
+  updates: { title?: string; ai_assistant_type?: string }
 ): Promise<{ success: boolean }> {
   return fetchJSON(`/api/conversations/${id}`, {
     method: 'PATCH',

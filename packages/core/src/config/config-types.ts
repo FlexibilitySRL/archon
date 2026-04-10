@@ -30,6 +30,12 @@ export interface ClaudeAssistantDefaults {
   settingSources?: ('project' | 'user')[];
 }
 
+export interface CopilotAssistantDefaults {
+  model?: string;
+  /** Reasoning effort level. Maps to Copilot SDK ReasoningEffort ('minimal' → 'low'). */
+  modelReasoningEffort?: ModelReasoningEffort;
+}
+
 export interface GlobalConfig {
   /**
    * Bot display name (shown in messages)
@@ -41,7 +47,7 @@ export interface GlobalConfig {
    * Default AI assistant when no codebase-specific preference
    * @default 'claude'
    */
-  defaultAssistant?: 'claude' | 'codex';
+  defaultAssistant?: 'claude' | 'codex' | 'copilot';
 
   /**
    * Assistant-specific defaults (model, reasoning effort, etc.)
@@ -49,6 +55,7 @@ export interface GlobalConfig {
   assistants?: {
     claude?: ClaudeAssistantDefaults;
     codex?: AssistantDefaults;
+    copilot?: CopilotAssistantDefaults;
   };
 
   /**
@@ -112,7 +119,7 @@ export interface RepoConfig {
    * AI assistant preference for this repository
    * Overrides global default
    */
-  assistant?: 'claude' | 'codex';
+  assistant?: 'claude' | 'codex' | 'copilot';
 
   /**
    * Assistant-specific defaults for this repository
@@ -120,6 +127,7 @@ export interface RepoConfig {
   assistants?: {
     claude?: ClaudeAssistantDefaults;
     codex?: AssistantDefaults;
+    copilot?: CopilotAssistantDefaults;
   };
 
   /**
@@ -215,10 +223,11 @@ export interface RepoConfig {
  */
 export interface MergedConfig {
   botName: string;
-  assistant: 'claude' | 'codex';
+  assistant: 'claude' | 'codex' | 'copilot';
   assistants: {
     claude: ClaudeAssistantDefaults;
     codex: AssistantDefaults;
+    copilot: CopilotAssistantDefaults;
   };
   streaming: {
     telegram: 'stream' | 'batch';
@@ -279,10 +288,11 @@ export interface MergedConfig {
  */
 export interface SafeConfig {
   botName: string;
-  assistant: 'claude' | 'codex';
+  assistant: 'claude' | 'codex' | 'copilot';
   assistants: {
     claude: Pick<ClaudeAssistantDefaults, 'model'>;
     codex: Pick<AssistantDefaults, 'model' | 'modelReasoningEffort' | 'webSearchMode'>;
+    copilot: Pick<CopilotAssistantDefaults, 'model' | 'modelReasoningEffort'>;
   };
   streaming: {
     telegram: 'stream' | 'batch';

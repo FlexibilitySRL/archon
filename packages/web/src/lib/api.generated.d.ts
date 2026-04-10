@@ -2047,7 +2047,7 @@ export interface components {
       trigger_rule?: 'all_success' | 'one_success' | 'none_failed_min_one_success' | 'all_done';
       model?: string;
       /** @enum {string} */
-      provider?: 'claude' | 'codex';
+      provider?: 'claude' | 'codex' | 'copilot';
       /** @enum {string} */
       context?: 'fresh' | 'shared';
       output_format?: {
@@ -2294,7 +2294,7 @@ export interface components {
       name: string;
       description: string;
       /** @enum {string} */
-      provider?: 'claude' | 'codex';
+      provider?: 'claude' | 'codex' | 'copilot';
       model?: string;
       /** @enum {string} */
       modelReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
@@ -2487,7 +2487,7 @@ export interface components {
     SafeConfig: {
       botName: string;
       /** @enum {string} */
-      assistant: 'claude' | 'codex';
+      assistant: 'claude' | 'codex' | 'copilot';
       assistants: {
         claude: {
           model?: string;
@@ -2498,6 +2498,11 @@ export interface components {
           modelReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
           /** @enum {string} */
           webSearchMode?: 'disabled' | 'cached' | 'live';
+        };
+        copilot: {
+          model?: string;
+          /** @enum {string} */
+          modelReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         };
       };
       streaming: {
@@ -2523,7 +2528,7 @@ export interface components {
     };
     UpdateAssistantConfigBody: {
       /** @enum {string} */
-      assistant?: 'claude' | 'codex';
+      assistant?: 'claude' | 'codex' | 'copilot';
       claude?: {
         model: string;
       };
@@ -2533,6 +2538,11 @@ export interface components {
         modelReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
         /** @enum {string} */
         webSearchMode?: 'disabled' | 'cached' | 'live';
+      };
+      copilot?: {
+        model: string;
+        /** @enum {string} */
+        modelReasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
       };
     };
     IsolationEnvironment: {

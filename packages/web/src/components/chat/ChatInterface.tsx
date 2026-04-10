@@ -19,6 +19,7 @@ import {
   createConversation,
   getWorkflowRunByWorker,
   getHealth,
+  updateConversation,
 } from '@/lib/api';
 import type { ConversationResponse, CodebaseResponse, MessageResponse } from '@/lib/api';
 import type {
@@ -466,6 +467,23 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps): React.Rea
     });
   }, []);
 
+  const handleAssistantChange = useCallback(
+    async (type: string) => {
+      if (!conversationId || isNewChat) return;
+      try {
+        await updateConversation(conversationId, { ai_assistant_type: type });
+        await queryClient.invalidateQueries({ queryKey: ['conversations'] });
+      } catch (err) {
+        onError({
+          message: `Failed to switch assistant: ${(err as Error).message}`,
+          classification: 'transient',
+          suggestedActions: [],
+        });
+      }
+    },
+    [conversationId, isNewChat, queryClient, onError]
+  );
+
   const onLockChange = useCallback((isLocked: boolean, position?: number): void => {
     setLocked(isLocked);
     setQueuePosition(position);
@@ -753,6 +771,8 @@ export function ChatInterface({ conversationId }: ChatInterfaceProps): React.Rea
         projectName={currentCodebase?.name ?? contextCodebase?.name}
         connected={isNewChat ? undefined : connected}
         isDocker={isDocker}
+        assistantType={currentConv?.ai_assistant_type}
+        onAssistantChange={isNewChat ? undefined : handleAssistantChange}
       />
       {(conversationsError || codebasesError) && (
         <div className="flex gap-2 px-4 py-1">

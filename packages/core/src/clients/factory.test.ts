@@ -19,21 +19,29 @@ describe('factory', () => {
       expect(typeof client.sendQuery).toBe('function');
     });
 
+    test('returns CopilotClient for copilot type', () => {
+      const client = getAssistantClient('copilot');
+
+      expect(client).toBeDefined();
+      expect(client.getType()).toBe('copilot');
+      expect(typeof client.sendQuery).toBe('function');
+    });
+
     test('throws error for unknown type', () => {
       expect(() => getAssistantClient('unknown')).toThrow(
-        "Unknown assistant type: unknown. Supported types: 'claude', 'codex'"
+        "Unknown assistant type: unknown. Supported types: 'claude', 'codex', 'copilot'"
       );
     });
 
     test('throws error for empty string', () => {
       expect(() => getAssistantClient('')).toThrow(
-        "Unknown assistant type: . Supported types: 'claude', 'codex'"
+        "Unknown assistant type: . Supported types: 'claude', 'codex', 'copilot'"
       );
     });
 
     test('is case sensitive - Claude throws', () => {
       expect(() => getAssistantClient('Claude')).toThrow(
-        "Unknown assistant type: Claude. Supported types: 'claude', 'codex'"
+        "Unknown assistant type: Claude. Supported types: 'claude', 'codex', 'copilot'"
       );
     });
 

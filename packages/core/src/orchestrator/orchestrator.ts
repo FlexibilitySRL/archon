@@ -266,8 +266,8 @@ export async function dispatchBackgroundWorkflow(
   // 1. Generate worker conversation ID
   const workerPlatformId = `web-worker-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
 
-  // 2. Create worker conversation in DB
-  const workerConv = await db.getOrCreateConversation('web', workerPlatformId);
+  // 2. Create worker conversation in DB (pass codebaseId so ai_assistant_type is resolved from codebase)
+  const workerConv = await db.getOrCreateConversation('web', workerPlatformId, ctx.codebaseId);
   await db.updateConversation(workerConv.id, {
     cwd: ctx.cwd,
     codebase_id: ctx.codebaseId ?? null,

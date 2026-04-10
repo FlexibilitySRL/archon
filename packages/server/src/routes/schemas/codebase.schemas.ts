@@ -44,7 +44,8 @@ export const addCodebaseBodySchema = z
 /** PATCH /api/codebases/:id request body. */
 export const updateCodebaseBodySchema = z
   .object({
-    allowEnvKeys: z.boolean(),
+    allowEnvKeys: z.boolean().optional(),
+    ai_assistant_type: z.enum(['claude', 'codex', 'copilot']).optional(),
   })
   .openapi('UpdateCodebaseBody');
 

@@ -19,7 +19,7 @@ export async function createCodebase(data: {
   ai_assistant_type?: string;
   allow_env_keys?: boolean;
 }): Promise<Codebase> {
-  const assistantType = data.ai_assistant_type ?? 'claude';
+  const assistantType = data.ai_assistant_type ?? (process.env.DEFAULT_AI_ASSISTANT || 'claude');
   const allowEnvKeys = data.allow_env_keys ?? false;
   const result = await pool.query<Codebase>(
     'INSERT INTO remote_agent_codebases (name, repository_url, default_cwd, ai_assistant_type, allow_env_keys) VALUES ($1, $2, $3, $4, $5) RETURNING *',
@@ -127,7 +127,7 @@ export async function findCodebaseByName(name: string): Promise<Codebase | null>
 
 export async function updateCodebase(
   id: string,
-  data: { default_cwd?: string; repository_url?: string | null }
+  data: { default_cwd?: string; repository_url?: string | null; ai_assistant_type?: string }
 ): Promise<void> {
   const dialect = getDialect();
   const updates: string[] = [];
@@ -142,6 +142,11 @@ export async function updateCodebase(
   if (data.repository_url !== undefined) {
     updates.push(`repository_url = $${paramIndex++}`);
     values.push(data.repository_url);
+  }
+
+  if (data.ai_assistant_type !== undefined) {
+    updates.push(`ai_assistant_type = $${paramIndex++}`);
+    values.push(data.ai_assistant_type);
   }
 
   if (updates.length === 0) return;

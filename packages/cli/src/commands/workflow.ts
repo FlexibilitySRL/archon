@@ -276,7 +276,14 @@ export async function workflowRunCommand(
   // Get or create conversation in database
   let conversation;
   try {
-    conversation = await conversationDb.getOrCreateConversation('cli', conversationId);
+    const cliConfig = await loadConfig();
+    conversation = await conversationDb.getOrCreateConversation(
+      'cli',
+      conversationId,
+      undefined,
+      undefined,
+      cliConfig.assistant
+    );
   } catch (error) {
     const err = error as Error;
     throw new Error(

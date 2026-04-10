@@ -194,6 +194,7 @@ function getDefaults(): MergedConfig {
     assistants: {
       claude: {},
       codex: {},
+      copilot: {},
     },
     streaming: {
       telegram: 'stream',
@@ -232,7 +233,7 @@ function applyEnvOverrides(config: MergedConfig): MergedConfig {
 
   // Assistant override
   const envAssistant = process.env.DEFAULT_AI_ASSISTANT;
-  if (envAssistant === 'claude' || envAssistant === 'codex') {
+  if (envAssistant === 'claude' || envAssistant === 'codex' || envAssistant === 'copilot') {
     config.assistant = envAssistant;
   }
 
@@ -277,6 +278,7 @@ function mergeGlobalConfig(defaults: MergedConfig, global: GlobalConfig): Merged
     assistants: {
       claude: { ...defaults.assistants.claude },
       codex: { ...defaults.assistants.codex },
+      copilot: { ...defaults.assistants.copilot },
     },
   };
 
@@ -300,6 +302,12 @@ function mergeGlobalConfig(defaults: MergedConfig, global: GlobalConfig): Merged
     result.assistants.codex = {
       ...result.assistants.codex,
       ...global.assistants.codex,
+    };
+  }
+  if (global.assistants?.copilot) {
+    result.assistants.copilot = {
+      ...result.assistants.copilot,
+      ...global.assistants.copilot,
     };
   }
 
@@ -339,6 +347,7 @@ function mergeRepoConfig(merged: MergedConfig, repo: RepoConfig): MergedConfig {
     assistants: {
       claude: { ...merged.assistants.claude },
       codex: { ...merged.assistants.codex },
+      copilot: { ...merged.assistants.copilot },
     },
   };
 
@@ -479,6 +488,7 @@ export async function updateGlobalConfig(updates: Partial<GlobalConfig>): Promis
       merged.assistants = {
         claude: { ...current.assistants?.claude, ...updates.assistants.claude },
         codex: { ...current.assistants?.codex, ...updates.assistants.codex },
+        copilot: { ...current.assistants?.copilot, ...updates.assistants.copilot },
       };
     }
 
@@ -528,6 +538,10 @@ export function toSafeConfig(config: MergedConfig): SafeConfig {
         model: config.assistants.codex.model,
         modelReasoningEffort: config.assistants.codex.modelReasoningEffort,
         webSearchMode: config.assistants.codex.webSearchMode,
+      },
+      copilot: {
+        model: config.assistants.copilot.model,
+        modelReasoningEffort: config.assistants.copilot.modelReasoningEffort,
       },
     },
     streaming: {
