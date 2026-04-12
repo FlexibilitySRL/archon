@@ -2611,12 +2611,13 @@ export function registerApiRoutes(
   // GET /api/copilot/models - List available Copilot models
   registerOpenApiRoute(getCopilotModelsRoute, async c => {
     try {
-      const copilotModule = await import('@archon/core/clients/copilot');
-      const client = new copilotModule.CopilotClient();
-      const models = await client.listModels();
+      const coreModule = await import('@archon/core');
+      const provider = new coreModule.CopilotProvider();
+      const models = await provider.listModels();
       return c.json({ models });
     } catch (error) {
-      getLog().error({ err: error }, 'copilot.models_list_failed');
+      const msg = error instanceof Error ? error.message : String(error);
+      getLog().error({ error: msg }, 'copilot.models_list_failed');
       return apiError(c, 500, 'Failed to list Copilot models');
     }
   });
