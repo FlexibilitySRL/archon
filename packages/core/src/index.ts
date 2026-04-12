@@ -25,7 +25,7 @@ export {
   isWebAdapter,
   type MessageMetadata,
   type MessageChunk,
-  type IAssistantClient,
+  type IAgentProvider,
 } from './types';
 
 // =============================================================================
@@ -53,12 +53,12 @@ export * as messageDb from './db/messages';
 export { SessionNotFoundError } from './db/sessions';
 
 // =============================================================================
-// AI Clients
+// Agent Providers
 // =============================================================================
-export { ClaudeClient } from './clients/claude';
-export { CodexClient } from './clients/codex';
-export { CopilotClient } from './clients/copilot';
-export { getAssistantClient } from './clients/factory';
+export { ClaudeProvider } from './providers/claude';
+export { CodexProvider } from './providers/codex';
+export { CopilotProvider } from './providers/copilot';
+export { getAgentProvider } from './providers/factory';
 
 // =============================================================================
 // Workflows

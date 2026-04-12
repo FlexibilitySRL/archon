@@ -116,6 +116,7 @@
       "name": "@archon/paths",
       "version": "0.3.5",
       "dependencies": {
+        "dotenv": "^17",
         "pino": "^9",
         "pino-pretty": "^13",
       },

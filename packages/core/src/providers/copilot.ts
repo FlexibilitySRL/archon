@@ -19,8 +19,8 @@ import {
   type SessionEventPayload,
 } from '@github/copilot-sdk';
 import {
-  type AssistantRequestOptions,
-  type IAssistantClient,
+  type AgentRequestOptions,
+  type IAgentProvider,
   type MessageChunk,
   type TokenUsage,
 } from '../types';
@@ -29,7 +29,7 @@ import { createLogger } from '@archon/paths';
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
 let cachedLog: ReturnType<typeof createLogger> | undefined;
 function getLog(): ReturnType<typeof createLogger> {
-  if (!cachedLog) cachedLog = createLogger('client.copilot');
+  if (!cachedLog) cachedLog = createLogger('provider.copilot');
   return cachedLog;
 }
 
@@ -79,7 +79,7 @@ function isReasoningUnsupportedError(err: unknown): boolean {
 
 function buildSessionConfig(
   cwd: string,
-  requestOptions?: AssistantRequestOptions,
+  requestOptions?: AgentRequestOptions,
   includeReasoning = true
 ): SessionConfig {
   return {
@@ -95,7 +95,7 @@ function buildSessionConfig(
 async function createSessionWithFallback(
   client: CopilotSdk,
   cwd: string,
-  requestOptions: AssistantRequestOptions | undefined,
+  requestOptions: AgentRequestOptions | undefined,
   queue: ReturnType<typeof createQueue<MessageChunk>>
 ): Promise<Awaited<ReturnType<typeof client.createSession>>> {
   try {
@@ -115,18 +115,18 @@ async function createSessionWithFallback(
 
 /**
  * GitHub Copilot assistant client.
- * Implements IAssistantClient for use alongside ClaudeClient and CodexClient.
+ * Implements IAgentProvider for use alongside ClaudeProvider and CodexProvider.
  */
-export class CopilotClient implements IAssistantClient {
+export class CopilotProvider implements IAgentProvider {
   /**
    * Send a prompt to Copilot and stream responses as MessageChunks.
-   * Creates a new CopilotClient+session per call for isolation.
+   * Creates a new CopilotSdk+session per call for isolation.
    */
   async *sendQuery(
     prompt: string,
     cwd: string,
     resumeSessionId?: string,
-    requestOptions?: AssistantRequestOptions
+    requestOptions?: AgentRequestOptions
   ): AsyncGenerator<MessageChunk> {
     if (requestOptions?.abortSignal?.aborted) {
       throw new Error('Query aborted');

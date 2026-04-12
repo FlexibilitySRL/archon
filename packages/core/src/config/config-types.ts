@@ -12,7 +12,7 @@
  */
 import type { ModelReasoningEffort, WebSearchMode } from '../types';
 
-export interface AssistantDefaults {
+export interface CodexProviderDefaults {
   model?: string;
   modelReasoningEffort?: ModelReasoningEffort;
   webSearchMode?: WebSearchMode;
@@ -22,7 +22,7 @@ export interface AssistantDefaults {
   codexBinaryPath?: string;
 }
 
-export interface ClaudeAssistantDefaults {
+export interface ClaudeCodexProviderDefaults {
   model?: string;
   /** Claude Code settingSources — controls which CLAUDE.md files are loaded.
    *  @default ['project']
@@ -53,8 +53,8 @@ export interface GlobalConfig {
    * Assistant-specific defaults (model, reasoning effort, etc.)
    */
   assistants?: {
-    claude?: ClaudeAssistantDefaults;
-    codex?: AssistantDefaults;
+    claude?: ClaudeCodexProviderDefaults;
+    codex?: CodexProviderDefaults;
     copilot?: CopilotAssistantDefaults;
   };
 
@@ -125,8 +125,8 @@ export interface RepoConfig {
    * Assistant-specific defaults for this repository
    */
   assistants?: {
-    claude?: ClaudeAssistantDefaults;
-    codex?: AssistantDefaults;
+    claude?: ClaudeCodexProviderDefaults;
+    codex?: CodexProviderDefaults;
     copilot?: CopilotAssistantDefaults;
   };
 
@@ -225,8 +225,8 @@ export interface MergedConfig {
   botName: string;
   assistant: 'claude' | 'codex' | 'copilot';
   assistants: {
-    claude: ClaudeAssistantDefaults;
-    codex: AssistantDefaults;
+    claude: ClaudeCodexProviderDefaults;
+    codex: CodexProviderDefaults;
     copilot: CopilotAssistantDefaults;
   };
   streaming: {
@@ -290,8 +290,8 @@ export interface SafeConfig {
   botName: string;
   assistant: 'claude' | 'codex' | 'copilot';
   assistants: {
-    claude: Pick<ClaudeAssistantDefaults, 'model'>;
-    codex: Pick<AssistantDefaults, 'model' | 'modelReasoningEffort' | 'webSearchMode'>;
+    claude: Pick<ClaudeCodexProviderDefaults, 'model'>;
+    codex: Pick<CodexProviderDefaults, 'model' | 'modelReasoningEffort' | 'webSearchMode'>;
     copilot: Pick<CopilotAssistantDefaults, 'model' | 'modelReasoningEffort'>;
   };
   streaming: {

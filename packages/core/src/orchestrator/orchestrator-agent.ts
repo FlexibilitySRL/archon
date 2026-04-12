@@ -13,7 +13,7 @@ import type {
   HandleMessageContext,
   Conversation,
   Codebase,
-  AssistantRequestOptions,
+  AgentRequestOptions,
   AttachedFile,
 } from '../types';
 import { ConversationNotFoundError } from '../types';
@@ -24,7 +24,7 @@ import * as commandHandler from '../handlers/command-handler';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
-import { getAssistantClient } from '../clients/factory';
+import { getAgentProvider } from '../providers/factory';
 import { getArchonHome, getArchonWorkspacesPath } from '@archon/paths';
 import { syncArchonToWorktree } from '../utils/worktree-sync';
 import { syncWorkspace, toRepoPath } from '@archon/git';
@@ -87,7 +87,7 @@ export interface OrchestratorCommands {
  * Build AssistantRequestOptions from the merged config for the given provider.
  * Reads model, reasoning effort, web search, and provider-specific settings.
  */
-function buildRequestOptions(assistantType: string, config: MergedConfig): AssistantRequestOptions {
+function buildRequestOptions(assistantType: string, config: MergedConfig): AgentRequestOptions {
   switch (assistantType) {
     case 'claude': {
       const c = config.assistants.claude;
@@ -789,14 +789,14 @@ export async function handleMessage(
       });
     }
 
-    // 5. Send to AI client
-    const aiClient = getAssistantClient(conversation.ai_assistant_type);
+    // 5. Send to AI provider
+    const aiClient = getAgentProvider(conversation.ai_assistant_type);
     getLog().debug({ assistantType: conversation.ai_assistant_type }, 'sending_to_ai');
 
     // Reuse the config already loaded during workflow discovery (avoids a second disk read).
     // Fall back to loadConfig only when no codebase is scoped (discoveredConfig is undefined).
     const config = discoveredConfig ?? (await loadConfig());
-    const requestOptions: AssistantRequestOptions = buildRequestOptions(
+    const requestOptions: AgentRequestOptions = buildRequestOptions(
       conversation.ai_assistant_type,
       config
     );
@@ -861,14 +861,14 @@ async function handleStreamMode(
   originalMessage: string,
   codebases: readonly Codebase[],
   workflows: readonly WorkflowDefinition[],
-  aiClient: ReturnType<typeof getAssistantClient>,
+  aiClient: ReturnType<typeof getAgentProvider>,
   fullPrompt: string,
   cwd: string,
   session: { id: string; assistant_session_id: string | null },
   isolationHints: HandleMessageContext['isolationHints'],
   conversation: Conversation,
   issueContext?: string,
-  requestOptions?: AssistantRequestOptions
+  requestOptions?: AgentRequestOptions
 ): Promise<void> {
   const allMessages: string[] = [];
   let newSessionId: string | undefined;
@@ -977,14 +977,14 @@ async function handleBatchMode(
   originalMessage: string,
   codebases: readonly Codebase[],
   workflows: readonly WorkflowDefinition[],
-  aiClient: ReturnType<typeof getAssistantClient>,
+  aiClient: ReturnType<typeof getAgentProvider>,
   fullPrompt: string,
   cwd: string,
   session: { id: string; assistant_session_id: string | null },
   isolationHints: HandleMessageContext['isolationHints'],
   conversation: Conversation,
   issueContext?: string,
-  requestOptions?: AssistantRequestOptions
+  requestOptions?: AgentRequestOptions
 ): Promise<void> {
   const allChunks: { type: string; content: string }[] = [];
   const assistantMessages: string[] = [];
