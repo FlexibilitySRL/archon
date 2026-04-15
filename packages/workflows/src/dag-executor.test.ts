@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, mock, type Mock } from 'bun:test';
+import { describe, it, expect, beforeEach, afterEach, mock, spyOn, type Mock } from 'bun:test';
 import { mkdir, writeFile, rm } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import * as git from '@archon/git';
 
 // --- Mock logger (MUST come before imports of modules under test) ---
 
@@ -25,14 +26,19 @@ mock.module('@archon/paths', () => ({
   getDefaultCommandsPath: () => '/nonexistent/defaults',
 }));
 
+// --- Bootstrap provider registry (after path mocks, before dag-executor import) ---
+import { registerBuiltinProviders, clearRegistry } from '@archon/providers';
+clearRegistry();
+registerBuiltinProviders();
+
 // --- Imports (after mocks) ---
 import {
   buildTopologicalLayers,
   checkTriggerRule,
   substituteNodeOutputRefs,
   executeDagWorkflow,
-  loadMcpConfig,
 } from './dag-executor';
+import { loadMcpConfig } from '@archon/providers/claude/provider';
 import type { DagNode, BashNode, ScriptNode, NodeOutput, WorkflowRun } from './schemas';
 import { discoverWorkflows } from './workflow-discovery';
 import { parseWorkflow } from './loader';
@@ -93,6 +99,37 @@ function createMockStore(): IWorkflowStore {
   };
 }
 
+/** All-true capabilities for Claude mock */
+const mockClaudeCapabilities = () => ({
+  sessionResume: true,
+  mcp: true,
+  hooks: true,
+  skills: true,
+  toolRestrictions: true,
+  structuredOutput: true,
+  envInjection: true,
+  costControl: true,
+  effortControl: true,
+  thinkingControl: true,
+  fallbackModel: true,
+  sandbox: true,
+});
+/** Limited capabilities for Codex mock */
+const mockCodexCapabilities = () => ({
+  sessionResume: true,
+  mcp: false,
+  hooks: false,
+  skills: false,
+  toolRestrictions: false,
+  structuredOutput: true,
+  envInjection: true,
+  costControl: false,
+  effortControl: false,
+  thinkingControl: false,
+  fallbackModel: false,
+  sandbox: false,
+});
+
 /** Mock AI sendQuery generator */
 const mockSendQueryDag = mock(function* () {
   yield { type: 'assistant', content: 'DAG AI response' };
@@ -102,6 +139,7 @@ const mockSendQueryDag = mock(function* () {
 const mockGetAgentProviderDag = mock(() => ({
   sendQuery: mockSendQueryDag,
   getType: () => 'claude',
+  getCapabilities: mockClaudeCapabilities,
 }));
 
 function createMockDeps(storeOverride?: IWorkflowStore): WorkflowDeps {
@@ -762,6 +800,7 @@ describe('executeDagWorkflow -- tool restrictions', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -796,13 +835,15 @@ describe('executeDagWorkflow -- tool restrictions', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    expect(optionsArg?.tools).toEqual(['Read', 'Grep']);
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    expect(nodeConfig?.allowed_tools).toEqual(['Read', 'Grep']);
   });
 
   it('warns user when Codex DAG node has denied_tools only', async () => {
     mockGetAgentProviderDag.mockReturnValue({
       sendQuery: mockSendQueryDag,
       getType: () => 'codex',
+      getCapabilities: mockCodexCapabilities,
     });
 
     const mockDeps = createMockDeps();
@@ -832,7 +873,9 @@ describe('executeDagWorkflow -- tool restrictions', () => {
 
     const sendMessage = platform.sendMessage as ReturnType<typeof mock>;
     const messages = sendMessage.mock.calls.map((call: unknown[]) => call[1] as string);
-    const warning = messages.find(m => m.includes('denied_tools') && m.includes('Codex'));
+    const warning = messages.find(
+      m => m.includes('allowed_tools/denied_tools') && m.includes('codex')
+    );
     expect(warning).toBeDefined();
   });
 
@@ -859,7 +902,8 @@ describe('executeDagWorkflow -- tool restrictions', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    expect(optionsArg?.tools).toEqual([]);
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    expect(nodeConfig?.allowed_tools).toEqual([]);
   });
 
   it('passes hooks to sendQuery options for Claude node', async () => {
@@ -896,8 +940,9 @@ describe('executeDagWorkflow -- tool restrictions', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    expect(optionsArg?.hooks).toBeDefined();
-    const hooks = optionsArg?.hooks as Record<string, unknown[]>;
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    expect(nodeConfig?.hooks).toBeDefined();
+    const hooks = nodeConfig?.hooks as Record<string, unknown[]>;
     expect(hooks.PreToolUse).toHaveLength(1);
   });
 
@@ -905,6 +950,7 @@ describe('executeDagWorkflow -- tool restrictions', () => {
     mockGetAgentProviderDag.mockReturnValue({
       sendQuery: mockSendQueryDag,
       getType: () => 'codex',
+      getCapabilities: mockCodexCapabilities,
     });
 
     const mockDeps = createMockDeps();
@@ -941,7 +987,7 @@ describe('executeDagWorkflow -- tool restrictions', () => {
 
     const sendMessage = platform.sendMessage as ReturnType<typeof mock>;
     const messages = sendMessage.mock.calls.map((call: unknown[]) => call[1] as string);
-    const warning = messages.find(m => m.includes('hooks') && m.includes('Codex'));
+    const warning = messages.find(m => m.includes('hooks') && m.includes('codex'));
     expect(warning).toBeDefined();
   });
 });
@@ -964,6 +1010,7 @@ describe('executeDagWorkflow -- bash nodes', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -1162,6 +1209,38 @@ describe('executeDagWorkflow -- bash nodes', () => {
     expect(mockSendQueryDag.mock.calls.length).toBe(1);
   });
 
+  it('passes config.envVars to bash subprocesses', async () => {
+    const execSpy = spyOn(git, 'execFileAsync').mockResolvedValue({ stdout: 'ok\n', stderr: '' });
+    const mockDeps = createMockDeps();
+    const platform = createMockPlatform();
+    const workflowRun = makeWorkflowRun('bash-env-run-id');
+
+    await executeDagWorkflow(
+      mockDeps,
+      platform,
+      'conv-bash-env',
+      testDir,
+      { name: 'bash-env-test', nodes: [{ id: 'stats', bash: 'echo ok' }] },
+      workflowRun,
+      'claude',
+      undefined,
+      join(testDir, 'artifacts'),
+      join(testDir, 'logs'),
+      'main',
+      'docs/',
+      { ...minimalConfig, envVars: { MY_SECRET: 'abc123' } }
+    );
+
+    expect(execSpy).toHaveBeenCalledWith(
+      'bash',
+      ['-c', 'echo ok'],
+      expect.objectContaining({
+        env: expect.objectContaining({ MY_SECRET: 'abc123' }),
+      })
+    );
+    execSpy.mockRestore();
+  });
+
   it('bash node output with shell metacharacters does not inject into downstream bash script', async () => {
     const mockDeps = createMockDeps();
     const platform = createMockPlatform();
@@ -1228,6 +1307,7 @@ describe('executeDagWorkflow -- output_format structured output', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -1393,15 +1473,16 @@ describe('executeDagWorkflow -- output_format structured output', () => {
   });
 
   it('passes outputFormat to Codex nodes and uses inline JSON response', async () => {
-    // Codex returns structured output inline as agent_message text (no structuredOutput field)
+    // Codex provider normalizes inline JSON into structuredOutput on the result chunk
     const classifyJson = { run_code_review: 'true', run_tests: 'false' };
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'codex',
+      getCapabilities: mockCodexCapabilities,
     }));
     mockSendQueryDag.mockImplementation(function* () {
       yield { type: 'assistant', content: JSON.stringify(classifyJson) };
-      yield { type: 'result', sessionId: 'codex-sid-1' };
+      yield { type: 'result', sessionId: 'codex-sid-1', structuredOutput: classifyJson };
     });
 
     const mockDeps = createMockDeps();
@@ -1464,14 +1545,15 @@ describe('executeDagWorkflow -- output_format structured output', () => {
   });
 
   it('does not warn about missing structuredOutput for Codex nodes', async () => {
-    // Codex returns structured output inline — no structuredOutput field on result
+    // Codex provider normalizes inline JSON into structuredOutput on the result chunk
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'codex',
+      getCapabilities: mockCodexCapabilities,
     }));
     mockSendQueryDag.mockImplementation(function* () {
       yield { type: 'assistant', content: '{"status":"ok"}' };
-      yield { type: 'result', sessionId: 'codex-sid-2' };
+      yield { type: 'result', sessionId: 'codex-sid-2', structuredOutput: { status: 'ok' } };
     });
 
     const mockDeps = createMockDeps();
@@ -1528,6 +1610,7 @@ describe('executeDagWorkflow -- when condition parse errors (fail-closed)', () =
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     mockSendQueryDag.mockImplementation(function* () {
       yield { type: 'assistant', content: 'AI response' };
@@ -1539,6 +1622,7 @@ describe('executeDagWorkflow -- when condition parse errors (fail-closed)', () =
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -1656,6 +1740,7 @@ describe('executeDagWorkflow -- node-level retry for transient errors', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     mockSendQueryDag.mockImplementation(function* () {
       yield { type: 'assistant', content: 'DAG AI response' };
@@ -1667,6 +1752,7 @@ describe('executeDagWorkflow -- node-level retry for transient errors', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -1845,6 +1931,7 @@ describe('executeDagWorkflow -- tool_called event persistence', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -1953,6 +2040,7 @@ describe('executeDagWorkflow -- tool_completed event emission', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -2222,6 +2310,7 @@ describe('executeDagWorkflow -- skills options', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -2256,17 +2345,9 @@ describe('executeDagWorkflow -- skills options', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    // agents contains the agent definition
-    const agents = optionsArg?.agents as Record<string, Record<string, unknown>>;
-    expect(agents).toBeDefined();
-    expect(agents['dag-node-review']).toBeDefined();
-    expect(agents['dag-node-review'].skills).toEqual(['codebase-search', 'test-runner']);
-    // tools always includes 'Skill' explicitly
-    expect(agents['dag-node-review'].tools).toEqual(['Skill']);
-    // agent references the key
-    expect(optionsArg?.agent).toBe('dag-node-review');
-    // allowedTools includes 'Skill' for the parent session
-    expect(optionsArg?.allowedTools).toContain('Skill');
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    // skills are passed in nodeConfig — provider translates to agents internally
+    expect(nodeConfig?.skills).toEqual(['codebase-search', 'test-runner']);
   });
 
   it('appends Skill to existing allowed_tools list when node has both', async () => {
@@ -2302,17 +2383,17 @@ describe('executeDagWorkflow -- skills options', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    const agents = optionsArg?.agents as Record<string, Record<string, unknown>>;
-    // Agent tools = allowed_tools + Skill
-    expect(agents['dag-node-review'].tools).toEqual(['Read', 'Grep', 'Skill']);
-    // Parent session also gets Skill
-    expect(optionsArg?.allowedTools).toContain('Skill');
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    // skills and allowed_tools are both in nodeConfig — provider merges internally
+    expect(nodeConfig?.skills).toEqual(['codebase-search']);
+    expect(nodeConfig?.allowed_tools).toEqual(['Read', 'Grep']);
   });
 
   it('warns user when Codex DAG node has skills and does not pass agents', async () => {
     mockGetAgentProviderDag.mockReturnValue({
       sendQuery: mockSendQueryDag,
       getType: () => 'codex',
+      getCapabilities: mockCodexCapabilities,
     });
 
     const mockDeps = createMockDeps();
@@ -2343,15 +2424,8 @@ describe('executeDagWorkflow -- skills options', () => {
     // Warning sent to user
     const sendMessage = platform.sendMessage as ReturnType<typeof mock>;
     const messages = sendMessage.mock.calls.map((call: unknown[]) => call[1] as string);
-    const warning = messages.find(m => m.includes('skills') && m.includes('Codex'));
+    const warning = messages.find(m => m.includes('skills') && m.includes('codex'));
     expect(warning).toBeDefined();
-
-    // No agents/agent passed to Codex sendQuery
-    if (mockSendQueryDag.mock.calls.length > 0) {
-      const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-      expect(optionsArg?.agents).toBeUndefined();
-      expect(optionsArg?.agent).toBeUndefined();
-    }
   });
 });
 
@@ -2469,6 +2543,7 @@ describe('executeDagWorkflow -- resume with priorCompletedNodes', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -3583,6 +3658,7 @@ describe('executeDagWorkflow -- break after result (no hang on subprocess exit)'
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -3595,6 +3671,7 @@ describe('executeDagWorkflow -- break after result (no hang on subprocess exit)'
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -3705,6 +3782,7 @@ describe('executeDagWorkflow -- terminal node output selection', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -3716,6 +3794,7 @@ describe('executeDagWorkflow -- terminal node output selection', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -3958,6 +4037,7 @@ describe('executeDagWorkflow -- credit exhaustion', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     mockSendQueryDag.mockImplementation(function* () {
       yield { type: 'assistant', content: 'DAG AI response' };
@@ -3978,6 +4058,7 @@ describe('executeDagWorkflow -- credit exhaustion', () => {
     mockGetAgentProviderDag.mockReturnValue({
       sendQuery: creditExhaustedQuery,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     });
 
     const store = createMockStore();
@@ -4029,6 +4110,7 @@ describe('executeDagWorkflow -- approval node', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -4036,6 +4118,7 @@ describe('executeDagWorkflow -- approval node', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -4336,6 +4419,7 @@ describe('executeDagWorkflow -- env var injection', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -4343,6 +4427,7 @@ describe('executeDagWorkflow -- env var injection', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
     try {
       await rm(testDir, { recursive: true, force: true });
@@ -4427,6 +4512,7 @@ describe('executeDagWorkflow -- Claude SDK advanced options', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -4558,7 +4644,8 @@ describe('executeDagWorkflow -- Claude SDK advanced options', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    expect(optionsArg?.effort).toBe('high');
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    expect(nodeConfig?.effort).toBe('high');
   });
 
   it('per-node effort overrides workflow-level effort', async () => {
@@ -4588,13 +4675,15 @@ describe('executeDagWorkflow -- Claude SDK advanced options', () => {
 
     expect(mockSendQueryDag.mock.calls.length).toBeGreaterThan(0);
     const optionsArg = mockSendQueryDag.mock.calls[0][3] as Record<string, unknown>;
-    expect(optionsArg?.effort).toBe('max');
+    const nodeConfig = optionsArg?.nodeConfig as Record<string, unknown>;
+    expect(nodeConfig?.effort).toBe('max');
   });
 
   it('warns user when Codex node has Claude-only options (effort)', async () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'codex',
+      getCapabilities: mockCodexCapabilities,
     }));
 
     const mockDeps = createMockDeps();
@@ -4643,6 +4732,7 @@ describe('executeDagWorkflow -- cost tracking', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -4845,6 +4935,7 @@ describe('executeDagWorkflow -- script nodes', () => {
     mockGetAgentProviderDag.mockImplementation(() => ({
       sendQuery: mockSendQueryDag,
       getType: () => 'claude',
+      getCapabilities: mockClaudeCapabilities,
     }));
   });
 
@@ -5208,5 +5299,89 @@ describe('executeDagWorkflow -- script nodes', () => {
     const messages = sendMessage.mock.calls.map((call: unknown[]) => call[1] as string);
     const notFoundMsg = messages.find((m: string) => m.includes('not found in .archon/scripts/'));
     expect(notFoundMsg).toBeDefined();
+  });
+
+  it('bun script node does not leak repo .env from execution cwd (#1135)', async () => {
+    // Regression test: place a .env with a marker in the execution cwd.
+    // The bun script must NOT see it because --no-env-file is passed.
+    const mockDeps = createMockDeps();
+    const platform = createMockPlatform();
+    const workflowRun = makeWorkflowRun('env-leak-run-id', {
+      workflow_name: 'env-leak-test',
+      conversation_id: 'conv-env-leak',
+      user_message: 'env leak test',
+    });
+
+    // Write a .env with a marker in the script execution cwd
+    await writeFile(join(testDir, '.env'), 'LEAKED_REPO_SECRET=should_not_appear\n');
+
+    const scriptNode: ScriptNode = {
+      id: 'env-check',
+      script: 'console.log(process.env.LEAKED_REPO_SECRET ?? "CLEAN")',
+      runtime: 'bun',
+    };
+
+    await executeDagWorkflow(
+      mockDeps,
+      platform,
+      'conv-env-leak',
+      testDir,
+      { name: 'env-leak-test', nodes: [scriptNode] },
+      workflowRun,
+      'claude',
+      undefined,
+      join(testDir, 'artifacts'),
+      join(testDir, 'logs'),
+      'main',
+      'docs/',
+      minimalConfig
+    );
+
+    // The node output should be "CLEAN" — the repo .env was not loaded
+    const eventCalls = (mockDeps.store.createWorkflowEvent as ReturnType<typeof mock>).mock.calls;
+    const completedEvent = eventCalls.find(
+      (call: unknown[]) =>
+        (call[0] as { event_type: string }).event_type === 'node_completed' &&
+        (call[0] as { step_name: string }).step_name === 'env-check'
+    );
+    expect(completedEvent).toBeDefined();
+    expect((completedEvent![0] as { data: { node_output: string } }).data.node_output).toBe(
+      'CLEAN'
+    );
+  });
+
+  it('passes config.envVars to script subprocesses', async () => {
+    const execSpy = spyOn(git, 'execFileAsync').mockResolvedValue({ stdout: 'ok\n', stderr: '' });
+    const mockDeps = createMockDeps();
+    const platform = createMockPlatform();
+    const workflowRun = makeWorkflowRun('script-env-run-id');
+
+    await executeDagWorkflow(
+      mockDeps,
+      platform,
+      'conv-script-env',
+      testDir,
+      {
+        name: 'script-env-test',
+        nodes: [{ id: 'inline-bun', script: 'console.log("ok")', runtime: 'bun' }],
+      },
+      workflowRun,
+      'claude',
+      undefined,
+      join(testDir, 'artifacts'),
+      join(testDir, 'logs'),
+      'main',
+      'docs/',
+      { ...minimalConfig, envVars: { MY_SECRET: 'abc123' } }
+    );
+
+    expect(execSpy).toHaveBeenCalledWith(
+      'bun',
+      ['--no-env-file', '-e', 'console.log("ok")'],
+      expect.objectContaining({
+        env: expect.objectContaining({ MY_SECRET: 'abc123' }),
+      })
+    );
+    execSpy.mockRestore();
   });
 });

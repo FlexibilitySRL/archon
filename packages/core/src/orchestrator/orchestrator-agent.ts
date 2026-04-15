@@ -13,9 +13,9 @@ import type {
   HandleMessageContext,
   Conversation,
   Codebase,
-  AgentRequestOptions,
   AttachedFile,
 } from '../types';
+import type { SendQueryOptions } from '@archon/providers/types';
 import { ConversationNotFoundError } from '../types';
 import * as db from '../db/conversations';
 import * as codebaseDb from '../db/codebases';
@@ -24,7 +24,7 @@ import * as commandHandler from '../handlers/command-handler';
 import { formatToolCall } from '@archon/workflows/utils/tool-formatter';
 import { classifyAndFormatError } from '../utils/error-formatter';
 import { toError } from '../utils/error';
-import { getAgentProvider } from '../providers/factory';
+import { getAgentProvider, getProviderCapabilities } from '@archon/providers';
 import { getArchonHome, getArchonWorkspacesPath } from '@archon/paths';
 import { syncArchonToWorktree } from '../utils/worktree-sync';
 import { syncWorkspace, toRepoPath } from '@archon/git';
@@ -46,6 +46,7 @@ import { IsolationBlockedError } from '@archon/isolation';
 import { buildOrchestratorPrompt, buildProjectScopedPrompt } from './prompt-builder';
 import * as workflowDb from '../db/workflows';
 import * as workflowEventDb from '../db/workflow-events';
+import { getCodebaseEnvVars } from '../db/env-vars';
 import type { ApprovalContext } from '@archon/workflows/schemas/workflow-run';
 
 /** Lazy-initialized logger (deferred so test mocks can intercept createLogger) */
@@ -79,42 +80,6 @@ export interface ProjectRegistration {
 export interface OrchestratorCommands {
   workflowInvocation: WorkflowInvocation | null;
   projectRegistration: ProjectRegistration | null;
-}
-
-// ─── Config → Request Options ──────────────────────────────────────────────
-
-/**
- * Build AssistantRequestOptions from the merged config for the given provider.
- * Reads model, reasoning effort, web search, and provider-specific settings.
- */
-function buildRequestOptions(assistantType: string, config: MergedConfig): AgentRequestOptions {
-  switch (assistantType) {
-    case 'claude': {
-      const c = config.assistants.claude;
-      return {
-        ...(c.model ? { model: c.model } : {}),
-        ...(c.settingSources ? { settingSources: c.settingSources } : {}),
-      };
-    }
-    case 'codex': {
-      const c = config.assistants.codex;
-      return {
-        ...(c.model ? { model: c.model } : {}),
-        ...(c.modelReasoningEffort ? { modelReasoningEffort: c.modelReasoningEffort } : {}),
-        ...(c.webSearchMode ? { webSearchMode: c.webSearchMode } : {}),
-        ...(c.additionalDirectories ? { additionalDirectories: c.additionalDirectories } : {}),
-      };
-    }
-    case 'copilot': {
-      const c = config.assistants.copilot;
-      return {
-        ...(c.model ? { model: c.model } : {}),
-        ...(c.modelReasoningEffort ? { modelReasoningEffort: c.modelReasoningEffort } : {}),
-      };
-    }
-    default:
-      return {};
-  }
 }
 
 // ─── Command Parsing ────────────────────────────────────────────────────────
@@ -796,10 +761,35 @@ export async function handleMessage(
     // Reuse the config already loaded during workflow discovery (avoids a second disk read).
     // Fall back to loadConfig only when no codebase is scoped (discoveredConfig is undefined).
     const config = discoveredConfig ?? (await loadConfig());
-    const requestOptions: AgentRequestOptions = buildRequestOptions(
-      conversation.ai_assistant_type,
-      config
-    );
+    const providerKey = conversation.ai_assistant_type;
+    let dbEnvVars: Record<string, string> = {};
+    if (conversation.codebase_id) {
+      try {
+        dbEnvVars = await getCodebaseEnvVars(conversation.codebase_id);
+      } catch (error) {
+        getLog().warn(
+          { err: error as Error, codebaseId: conversation.codebase_id },
+          'codebase_env_vars_load_failed'
+        );
+      }
+    }
+    const effectiveEnv = { ...(config.envVars ?? {}), ...dbEnvVars };
+
+    // Warn if provider doesn't support env injection but env vars are configured
+    if (Object.keys(effectiveEnv).length > 0) {
+      const providerCaps = getProviderCapabilities(providerKey);
+      if (!providerCaps.envInjection) {
+        getLog().warn(
+          { provider: providerKey, envVarCount: Object.keys(effectiveEnv).length },
+          'orchestrator.unsupported_env_injection'
+        );
+      }
+    }
+
+    const requestOptions: SendQueryOptions = {
+      assistantConfig: config.assistants[providerKey] ?? {},
+      env: Object.keys(effectiveEnv).length > 0 ? effectiveEnv : undefined,
+    };
 
     const mode = platform.getStreamingMode();
     if (mode === 'stream') {
@@ -868,7 +858,7 @@ async function handleStreamMode(
   isolationHints: HandleMessageContext['isolationHints'],
   conversation: Conversation,
   issueContext?: string,
-  requestOptions?: AgentRequestOptions
+  requestOptions?: SendQueryOptions
 ): Promise<void> {
   const allMessages: string[] = [];
   let newSessionId: string | undefined;
@@ -984,7 +974,7 @@ async function handleBatchMode(
   isolationHints: HandleMessageContext['isolationHints'],
   conversation: Conversation,
   issueContext?: string,
-  requestOptions?: AgentRequestOptions
+  requestOptions?: SendQueryOptions
 ): Promise<void> {
   const allChunks: { type: string; content: string }[] = [];
   const assistantMessages: string[] = [];
@@ -1226,12 +1216,12 @@ async function handleRegisterProject(
     return `Project "${projectName}" is already registered (path: ${alreadyExists.default_cwd}).`;
   }
 
-  // Create codebase record — use config default assistant
-  const regConfig = await loadConfig();
+  // Use config default provider instead of hardcoding 'claude'
+  const config = await loadConfig();
   const codebase = await codebaseDb.createCodebase({
     name: projectName,
     default_cwd: projectPath,
-    ai_assistant_type: regConfig.assistant,
+    ai_assistant_type: config.assistant,
   });
 
   getLog().info(
